@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: movielens-inference-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  movielens-inference.json: |
+    {
+      "title": "MovieLens Inference Service",
+      "uid": "movielens-inference",
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Request rate (req/s)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "targets": [
+            {"expr": "sum(rate(http_requests_total{namespace=\"staging\"}[1m])) by (path)"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Latency p50 / p95 (s)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "targets": [
+            {"expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{namespace=\"staging\"}[5m])) by (le, path))", "legendFormat": "p50 {{path}}"},
+            {"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"staging\"}[5m])) by (le, path))", "legendFormat": "p95 {{path}}"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Error rate (%)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [
+            {"expr": "100 * sum(rate(http_request_errors_total{namespace=\"staging\"}[5m])) / sum(rate(http_requests_total{namespace=\"staging\"}[5m]))"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Pod CPU usage (cores)",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "targets": [
+            {"expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"staging\", pod=~\"movielens-inference.*\"}[5m])) by (pod)"}
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Pod memory usage (bytes)",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "targets": [
+            {"expr": "sum(container_memory_working_set_bytes{namespace=\"staging\", pod=~\"movielens-inference.*\"}) by (pod)"}
+          ]
+        },
+        {
+          "type": "logs",
+          "title": "Inference service logs",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "datasource": {"type": "loki", "uid": "Loki"},
+          "targets": [
+            {"expr": "{namespace=\"staging\", pod=~\"movielens-inference.*\"}"}
+          ]
+        }
+      ]
+    }

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: movielens-inference
+  namespace: staging
+  labels:
+    app: movielens-inference
+spec:
+  selector:
+    app: movielens-inference
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

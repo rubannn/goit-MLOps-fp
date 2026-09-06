@@ -1,0 +1,8 @@
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+mlflow==3.16.0
+pandas==2.3.2
+numpy==2.3.2
+scikit-surprise==1.1.5
+prometheus_client==0.26.0
+boto3==1.43.89

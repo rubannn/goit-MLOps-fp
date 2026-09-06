@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: movielens-inference
+  namespace: staging
+  labels:
+    app: movielens-inference
+spec:
+  selector:
+    matchLabels:
+      app: movielens-inference
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

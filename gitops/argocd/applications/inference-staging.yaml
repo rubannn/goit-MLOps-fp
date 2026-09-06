@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: inference-staging
+  namespace: mlops-system
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rubannn/goit-MLOps-fp.git
+    targetRevision: main
+    path: gitops/inference
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

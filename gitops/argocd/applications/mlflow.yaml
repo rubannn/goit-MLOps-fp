@@ -34,6 +34,11 @@ spec:
             awsSecretAccessKey: minioadmin123
         extraEnvVars:
           MLFLOW_S3_ENDPOINT_URL: http://minio.mlops-system.svc.cluster.local:9000
+          # MLflow 3.x validates the Host header to block DNS-rebinding attacks; the
+          # default allowlist (localhost + private IPs) rejects in-cluster DNS names
+          # and host.docker.internal. Safe to open fully here because MLflow is never
+          # exposed outside the cluster (ClusterIP + port-forward only, no Ingress).
+          MLFLOW_SERVER_ALLOWED_HOSTS: "*"
   destination:
     server: https://kubernetes.default.svc
     namespace: mlops-system

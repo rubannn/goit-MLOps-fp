@@ -1,0 +1,8 @@
+mlflow==3.16.0
+pandas==2.3.2
+numpy==2.3.2
+scikit-surprise==1.1.5
+prometheus_client==0.26.0
+python-dotenv==1.2.3
+boto3==1.43.89
+psycopg2-binary==2.9.12
