@@ -8,7 +8,11 @@ MLOps-платформа на AWS EKS: Terraform-інфраструктура, A
 
 - **Датасет:** [MovieLens ml-latest-small](https://grouplens.org/datasets/movielens/) (GroupLens Research) — публічний, ~100 000 рейтингів, ~9 000 фільмів.
 - **Задача:** рекомендаційна система (Matrix Factorization).
-- **Deployment-стратегія:** Canary (90/10) — обґрунтування в `ADR.md` (буде додано в Блоці D).
+- **Deployment-стратегія:** Canary (90/10) — детальне обґрунтування в `ADR.md` (Блок D), коротко:
+  - Домен low-stakes (рекомендація фільму, не медичне/фінансове рішення) — безпечно пускати частину живого трафіку на неперевірену модель.
+  - Реалізація: `production` namespace містить 2 Deployment за одним Service без `track` у селекторі — `movielens-inference-stable` (9 реплік, модель зі стадії **Production**) і `movielens-inference-canary` (1 репліка, модель зі стадії **Staging** — наступний кандидат). Оскільки Service балансує по всіх подах, що збігаються з лейблом `app: movielens-inference`, розподіл трафіку визначається співвідношенням кількості реплік (9:1 ≈ 90/10), без Ingress-контролера чи service mesh.
+  - Перевірено наживо: 259 запитів через ClusterIP Service → 87.6% stable / 12.4% canary (очікувані статистичні відхилення від 90/10 через малу кількість подів і random-балансинг kube-proxy).
+  - Promotion (`experiments/promote_model.py`) і rollback (`experiments/rollback_model.py`) — окремі, явні дії, не автоматичні; rollback перевірено практично (RUNBOOK.md, Блок D2).
 
 ## Структура репозиторію
 
