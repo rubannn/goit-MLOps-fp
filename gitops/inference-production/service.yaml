@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: movielens-inference
+  namespace: production
+  labels:
+    app: movielens-inference
+spec:
+  # No `track` label in the selector on purpose: both the stable (9 replicas)
+  # and canary (1 replica) Deployments match "app: movielens-inference", so
+  # kube-proxy round-robins across all 10 pods — that pod-count ratio is what
+  # gives the 90/10 Canary split (see B3 in plan_checklist.md), without an
+  # Ingress controller or service mesh.
+  selector:
+    app: movielens-inference
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: ClusterIP

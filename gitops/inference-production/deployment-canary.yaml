@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: movielens-inference-canary
+  namespace: production
+  labels:
+    app: movielens-inference
+    track: canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: movielens-inference
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: movielens-inference
+        track: canary
+    spec:
+      containers:
+        - name: inference
+          image: 512523811086.dkr.ecr.us-east-1.amazonaws.com/movielens-inference:v1
+          ports:
+            - containerPort: 8000
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: http://mlflow.mlops-system.svc.cluster.local:5000
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: http://minio.mlops-system.svc.cluster.local:9000
+            - name: AWS_ACCESS_KEY_ID
+              value: minioadmin
+            - name: AWS_SECRET_ACCESS_KEY
+              value: minioadmin123
+            - name: MODEL_STAGE
+              value: Staging
+            - name: REGISTERED_MODEL_NAME
+              value: movielens-recommender
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
