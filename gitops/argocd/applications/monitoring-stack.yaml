@@ -23,11 +23,6 @@ spec:
         grafana:
           service:
             type: ClusterIP
-          additionalDataSources:
-            - name: Loki
-              type: loki
-              url: http://loki.monitoring.svc.cluster.local:3100
-              access: proxy
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
