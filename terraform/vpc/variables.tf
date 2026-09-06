@@ -13,7 +13,7 @@ variable "aws_profile" {
 variable "cluster_name" {
   description = "Name used as a prefix for VPC resources and to tag subnets for EKS"
   type        = string
-  default     = "goit-mlops"
+  default     = "goit-mlops-fp"
 }
 
 variable "vpc_cidr" {
