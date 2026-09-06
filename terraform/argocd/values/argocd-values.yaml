@@ -1,0 +1,32 @@
+dex:
+  enabled: false
+
+notifications:
+  enabled: false
+
+server:
+  service:
+    type: ClusterIP
+
+  extraArgs:
+    - --insecure
+
+  rbac:
+    create: true
+    policy.default: role:readonly
+    policy.csv: |
+      p, role:admin, applications, *, */*, allow
+      p, role:admin, clusters, get, *, allow
+      p, role:admin, repositories, get, *, allow
+      g, admin, role:admin
+
+controller:
+  timeout.reconciliation: 180s
+
+repoServer:
+  timeout.hard.reconciliation: 0s
+
+configs:
+  cm:
+    timeout.reconciliation: 180s
+    timeout.hard.reconciliation: 0s

@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: mlops-system
+spec:
+  project: default
+  source:
+    repoURL: registry-1.docker.io/bitnamicharts
+    chart: postgresql
+    targetRevision: 18.8.13
+    helm:
+      values: |
+        image:
+          repository: bitnamilegacy/postgresql
+        architecture: standalone
+        auth:
+          username: mlflow
+          password: mlflowpass
+          database: mlflow
+        primary:
+          service:
+            ports:
+              postgresql: 5432
+          persistence:
+            enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mlops-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

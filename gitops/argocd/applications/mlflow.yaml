@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mlflow
+  namespace: mlops-system
+spec:
+  project: default
+  source:
+    repoURL: https://community-charts.github.io/helm-charts
+    chart: mlflow
+    targetRevision: 1.11.5
+    helm:
+      values: |
+        service:
+          type: ClusterIP
+          port: 5000
+          containerPort: 5000
+        backendStore:
+          databaseMigration: true
+          databaseConnectionCheck: true
+          postgres:
+            enabled: true
+            host: postgres-postgresql.mlops-system.svc.cluster.local
+            port: 5432
+            database: mlflow
+            user: mlflow
+            password: mlflowpass
+            driver: psycopg2
+        artifactRoot:
+          s3:
+            enabled: true
+            bucket: mlflow-artifacts
+            awsAccessKeyId: minioadmin
+            awsSecretAccessKey: minioadmin123
+        extraEnvVars:
+          MLFLOW_S3_ENDPOINT_URL: http://minio.mlops-system.svc.cluster.local:9000
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mlops-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
