@@ -2,8 +2,6 @@
 
 MLOps-платформа на AWS EKS: Terraform-інфраструктура, ArgoCD (GitOps), MLflow Model Registry, Canary-деплой моделі рекомендацій (MovieLens), моніторинг та security baseline.
 
-> Опорні напрацювання з попередніх ДЗ: `goit-MLOps` (Terraform/EKS), `goit-MLOps-argo` (ArgoCD/namespace-маніфести). Код перенесено й адаптовано під структуру цього репозиторію — вихідні репозиторії не змінювались.
-
 **Документація:** [RUNBOOK.md](RUNBOOK.md) (операційні процедури) · [THREAT_MODEL.md](THREAT_MODEL.md) (загрози й контролі) · [ADR.md](ADR.md) (обґрунтування deployment-стратегії)
 
 ## Структура: один репозиторій
@@ -12,7 +10,6 @@ MLOps-платформа на AWS EKS: Terraform-інфраструктура, A
 
 - Усі частини мають спільний життєвий цикл і версіонуються разом — зміна моделі, деплойменту й інфраструктури часто йдуть в одному коміті (напр. новий образ inference-сервісу + оновлений Deployment-маніфест).
 - ArgoCD і так тягне GitOps-маніфести з цього самого репозиторію (`gitops_repo_url` у `terraform/argocd/variables.tf`) — розділення на кілька репо ускладнило б bootstrap без реальної користі для проєкту такого розміру.
-- `goit-MLOps` і `goit-MLOps-argo` (попередні ДЗ) — джерело коду, звідки перенесено й адаптовано частини цього репозиторію (Terraform-модулі, приклади ArgoCD Application-маніфестів); самі ці репозиторії не є частиною здачі фінального проєкту.
 
 ## Модель і дані
 
@@ -175,7 +172,7 @@ terraform apply
 - `ApplicationSet` `gitops-namespaces`, що синхронізує все з `gitops/namespace/*` (по одному Application на namespace)
 - `Application` `gitops-applications`, що синхронізує все з `gitops/argocd/applications` (сервіси)
 
-> ⚠️ Готча (з попереднього ДЗ): CRD ArgoCD з'являються лише після встановлення Helm-релізу — на чистому кластері `kubernetes_manifest` для `ApplicationSet`/`Application` може впасти з першої спроби. Якщо так — повторний `terraform apply` після появи CRD вирішує проблему (в коді це враховано через `depends_on = [helm_release.argocd]`, але timing CRD registration інколи вимагає повторного запуску).
+> ⚠️ Відома проблема: CRD ArgoCD з'являються лише після встановлення Helm-релізу — на чистому кластері `kubernetes_manifest` для `ApplicationSet`/`Application` може впасти з першої спроби. Якщо так — повторний `terraform apply` після появи CRD вирішує проблему (в коді це враховано через `depends_on = [helm_release.argocd]`, але timing CRD registration інколи вимагає повторного запуску).
 
 Перевірка:
 ```bash
