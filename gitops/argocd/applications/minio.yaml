@@ -14,8 +14,12 @@ spec:
         image:
           repository: bitnamilegacy/minio
         auth:
-          rootUser: minioadmin
-          rootPassword: minioadmin123
+          # Real credentials live only in the "minio-credentials" Secret,
+          # created once via `kubectl create secret` during bootstrap (see
+          # README.md) — never committed to git. See THREAT_MODEL.md / ADR.md.
+          existingSecret: minio-credentials
+          rootUserSecretKey: root-user
+          rootPasswordSecretKey: root-password
         defaultBuckets: "mlflow-artifacts"
         service:
           type: ClusterIP

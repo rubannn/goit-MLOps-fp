@@ -23,15 +23,23 @@ spec:
             host: postgres-postgresql.mlops-system.svc.cluster.local
             port: 5432
             database: mlflow
-            user: mlflow
-            password: mlflowpass
             driver: psycopg2
+            # Real credentials live only in the "postgres-credentials" Secret
+            # (same one Postgres itself reads) — never committed to git.
+            existingSecret:
+              name: postgres-credentials
+              usernameKey: username
+              passwordKey: password
         artifactRoot:
           s3:
             enabled: true
             bucket: mlflow-artifacts
-            awsAccessKeyId: minioadmin
-            awsSecretAccessKey: minioadmin123
+            # Real credentials live only in the "minio-credentials" Secret
+            # (same one MinIO itself reads) — never committed to git.
+            existingSecret:
+              name: minio-credentials
+              keyOfAccessKeyId: root-user
+              keyOfSecretAccessKey: root-password
         extraEnvVars:
           MLFLOW_S3_ENDPOINT_URL: http://minio.mlops-system.svc.cluster.local:9000
           # MLflow 3.x validates the Host header to block DNS-rebinding attacks; the

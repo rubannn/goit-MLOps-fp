@@ -38,6 +38,6 @@ Blue-Green був би сильнішим вибором, якби датасе�
 
 1. **Service mesh (Istio/Linkerd) або Ingress з traffic-splitting** замість replica-count-ratio — дає точний, детермінований відсоток трафіку (напр. точно 10.0%, а не приблизно), і можливість canary за іншими вимірами (header-based routing для internal testing перед публічним canary).
 2. **Redis-backed rate limiter** — прибирає per-под ліміт на користь справжнього кластерного rate limiting.
-3. **External Secrets Operator / Sealed Secrets** замість хардкоджених креденшелів MinIO/Postgres у git — найбільший залишковий security-борг проєкту (задокументовано в `THREAT_MODEL.md`, свідомо винесено за межі тижневого спринту).
+3. **External Secrets Operator / Vault / Sealed Secrets** замість ручного `kubectl create secret` під час bootstrap — поточне рішення (Kubernetes Secret + `existingSecret` у Helm-values) вже прибирає креденшели з git, але не дає ротації, аудиту доступу чи інтеграції з centralized secret-manager. Прийнятний наступний крок, не критичний для навчального проєкту з коротким життєвим циклом інфраструктури.
 4. **Автоматичний rollback у Canary** (Блок G2) — Prometheus alert на зростання error rate/latency canary-подів запускає автоматичний `kubectl scale deployment/movielens-inference-canary --replicas=0`, без очікування ручного втручання.
 5. **Multi-armed bandit замість фіксованого 90/10** — динамічне збільшення частки canary в міру накопичення довіри до нової версії (замість ручного рішення "тепер promote to Production").

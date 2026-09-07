@@ -29,9 +29,15 @@ spec:
             - name: MLFLOW_S3_ENDPOINT_URL
               value: http://minio.mlops-system.svc.cluster.local:9000
             - name: AWS_ACCESS_KEY_ID
-              value: minioadmin
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: root-user
             - name: AWS_SECRET_ACCESS_KEY
-              value: minioadmin123
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: root-password
             - name: MODEL_STAGE
               value: Production
             - name: REGISTERED_MODEL_NAME

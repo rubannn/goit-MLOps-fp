@@ -174,6 +174,25 @@ kubectl port-forward svc/argocd-server -n mlops-system 8080:443
 # відкрити https://localhost:8080, логін admin / (пароль з kubectl -n mlops-system get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 ```
 
+### Фаза 2.5 — секрети (одноразово, вручну, поза Git)
+
+MinIO/Postgres/MLflow читають креденшели з Kubernetes Secret, а не з git (див. `THREAT_MODEL.md`). Створіть їх **до** Фази 3, з власними паролями (не використовуйте наведені нижче як приклад):
+
+```bash
+for ns in mlops-system staging production; do
+  kubectl create secret generic minio-credentials -n $ns \
+    --from-literal=root-user=minioadmin \
+    --from-literal=root-password="$(openssl rand -base64 24)"
+done
+
+kubectl create secret generic postgres-credentials -n mlops-system \
+  --from-literal=postgres-password="$(openssl rand -base64 24)" \
+  --from-literal=username=mlflow \
+  --from-literal=password="$(openssl rand -base64 24)"
+```
+
+> ⚠️ `minio-credentials` має бути **однаковим** у всіх трьох namespace (`root-user`/`root-password` збігаються) — MinIO в `mlops-system` і inference-поди в `staging`/`production` мають користуватись одним і тим самим набором ключів для доступу до S3-артефактів. Postgres-креденшели потрібні лише в `mlops-system` (там же живе і сам Postgres, і MLflow).
+
 ### Фаза 3 — решта сервісів (через ArgoCD, GitOps)
 
 Нічого руками запускати не треба — ArgoCD автоматично підхоплює `gitops/argocd/applications/*.yaml` і розгортає MLflow, MinIO, Postgres, Pushgateway (у `mlops-system`) та monitoring-stack (у `monitoring`).
@@ -205,6 +224,5 @@ cd ../vpc && terraform destroy
 
 ## Відомі обмеження
 
-- **MinIO/Postgres/MLflow мають хардкоджені креденшели прямо в `gitops/argocd/applications/*.yaml`.** Блок C (security baseline) свідомо сфокусувався на inference-endpoint (input validation, rate limiting, RBAC, checksum, audit logging) — секрети зостались поза межами тижневого спринту. Правильне рішення — Kubernetes Secret + External Secrets Operator (або Sealed Secrets), задокументовано як компроміс у `ADR.md`.
 - **Rate limiting — per-под, не кластерний.** Лічильник живе в пам'яті кожного поду окремо (немає Redis чи shared store), тому ефективна межа масштабується з кількістю реплік. Задокументовано в `THREAT_MODEL.md`.
 - `mlops-system` namespace створюється двічі за задумом: спочатку напряму Terraform-ом (`kubernetes_namespace.argocd` — потрібен до встановлення самого ArgoCD, класична проблема "курки і яйця"), потім ще раз декларативно через `gitops/namespace/mlops-system/ns.yaml` під управлінням ArgoCD (ідемпотентно, конфлікту не викликає, ArgoCD просто бере existing namespace під GitOps-управління).

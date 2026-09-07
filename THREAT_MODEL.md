@@ -32,6 +32,6 @@
 
 **Контроль:** усі зміни stage (`register_and_stage`, `promote_to_production`, `rollback_production`) пушаться як структуровані JSON-події напряму в Loki (`experiments/audit_log.py`), поруч із логами inference-сервісу — єдине місце для розслідування інцидентів. Перевірено практично: подія `register_and_stage` знайдена через Loki query API.
 
----
+## Оновлення: креденшели MinIO/Postgres/MLflow
 
-**Що свідомо залишено поза threat model** (документовано як known limitation, не приховано): хардкоджені креденшели MinIO/Postgres у `gitops/argocd/applications/*.yaml` (п. "Відомі обмеження" у README.md) — окрема, більш фундаментальна загроза (secret management), яка вимагає зовнішнього secret-manager або Sealed Secrets/External Secrets Operator і виходить за рамки тижневого навчального спринту.
+Раніше в цьому розділі була описана загроза "хардкоджені креденшели MinIO/Postgres у git" — виправлено: реальні паролі тепер живуть лише в Kubernetes Secret (`minio-credentials`, `postgres-credentials`), створюваних вручну під час bootstrap (`kubectl create secret`, README.md, Фаза 2.5) і **ніколи не потрапляють у git**. Helm-values посилаються на них через `existingSecret` (MinIO, Postgres, MLflow-чарти) і `secretKeyRef` (inference-деплойменти). Залишковий ризик — секрети досі не ротуються автоматично і не керуються зовнішнім secret-manager (Vault/External Secrets Operator); прийнятний компроміс для навчального проєкту з коротким життєвим циклом інфраструктури (~24 год), задокументовано в `ADR.md`.

@@ -16,8 +16,14 @@ spec:
         architecture: standalone
         auth:
           username: mlflow
-          password: mlflowpass
           database: mlflow
+          # Real passwords live only in the "postgres-credentials" Secret,
+          # created once via `kubectl create secret` during bootstrap (see
+          # README.md) — never committed to git. See THREAT_MODEL.md / ADR.md.
+          existingSecret: postgres-credentials
+          secretKeys:
+            adminPasswordKey: postgres-password
+            userPasswordKey: password
         primary:
           service:
             ports:
