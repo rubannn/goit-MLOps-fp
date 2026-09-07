@@ -17,6 +17,8 @@ import os
 from dotenv import load_dotenv
 from mlflow.tracking import MlflowClient
 
+from audit_log import audit_event
+
 load_dotenv()
 
 MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -53,6 +55,12 @@ def main() -> None:
     # guessing from the (possibly multi-entry) Archived stage
     client.set_model_version_tag(
         REGISTERED_MODEL_NAME, version, "previous_production_version", previous_version or ""
+    )
+    audit_event(
+        "promote_to_production",
+        model_name=REGISTERED_MODEL_NAME,
+        version=version,
+        previous_production_version=previous_version,
     )
     print(f"Promoted {REGISTERED_MODEL_NAME} v{version} -> Production")
     print("Next: roll out the production deployment so it picks up the new model")

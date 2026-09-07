@@ -17,6 +17,8 @@ from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 from surprise import SVD, Dataset, Reader, accuracy
 from surprise.model_selection import train_test_split
 
+from audit_log import audit_event
+
 load_dotenv()
 
 MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -74,6 +76,16 @@ def dataset_version(path: str) -> str:
         return hashlib.sha256(f.read()).hexdigest()[:12]
 
 
+def model_artifact_sha256(run_id: str) -> str:
+    # python_model.pkl is the actual serialized model MLflow serves at inference
+    # time; hashing it (not the whole artifact dir, which also has YAML/txt
+    # metadata files with less deterministic ordering) is what "immutable model
+    # artifact" needs to check against later (C4).
+    local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path="model/python_model.pkl")
+    with open(local_path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
 def train_and_log(trainset, testset, n_factors: int, n_epochs: int):
     with mlflow.start_run() as run:
         algo = SVD(n_factors=n_factors, n_epochs=n_epochs, random_state=42)
@@ -101,12 +113,23 @@ def register_best_model(best_run_id: str, best_rmse: float, sha: str, dataset_ha
     client.set_model_version_tag(REGISTERED_MODEL_NAME, mv.version, "git_sha", sha)
     client.set_model_version_tag(REGISTERED_MODEL_NAME, mv.version, "dataset_version", dataset_hash)
     client.set_model_version_tag(REGISTERED_MODEL_NAME, mv.version, "rmse", f"{best_rmse:.4f}")
+    client.set_model_version_tag(
+        REGISTERED_MODEL_NAME, mv.version, "artifact_sha256", model_artifact_sha256(best_run_id)
+    )
 
     client.transition_model_version_stage(
         name=REGISTERED_MODEL_NAME,
         version=mv.version,
         stage="Staging",
         archive_existing_versions=False,
+    )
+    audit_event(
+        "register_and_stage",
+        model_name=REGISTERED_MODEL_NAME,
+        version=mv.version,
+        run_id=best_run_id,
+        stage="Staging",
+        rmse=f"{best_rmse:.4f}",
     )
     print(f"Registered {REGISTERED_MODEL_NAME} v{mv.version} (run {best_run_id}) -> Staging")
 

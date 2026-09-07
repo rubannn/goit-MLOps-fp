@@ -1,0 +1,20 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: mlops-engineer-restricted
+  namespace: production
+rules:
+  # Read-only visibility into everything relevant for on-call triage
+  - apiGroups: ["", "apps", "batch", "monitoring.coreos.com"]
+    resources: ["pods", "deployments", "replicasets", "services", "configmaps", "events", "jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Explicitly NOT granted: secrets (any verb), delete on anything, create on
+  # anything. The one write allowed is patching a Deployment, which is exactly
+  # what `kubectl rollout restart` needs (promote_model.py / rollback_model.py,
+  # RUNBOOK.md) — without opening up arbitrary object creation/deletion.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["patch"]

@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: inference
-          image: 512523811086.dkr.ecr.us-east-1.amazonaws.com/movielens-inference:v1
+          image: 512523811086.dkr.ecr.us-east-1.amazonaws.com/movielens-inference:v2
           ports:
             - containerPort: 8000
           env:

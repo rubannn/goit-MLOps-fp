@@ -1,7 +1,10 @@
 import logging
+import os
 import time
+from collections import defaultdict, deque
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
@@ -18,10 +21,54 @@ REQUEST_LATENCY = Histogram("http_request_duration_seconds", "Request latency in
 ERROR_COUNT = Counter("http_request_errors_total", "Total HTTP requests that resulted in an error", ["method", "path"])
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # HTTP 400, not FastAPI's default 422 — and no raw pydantic error internals
+    # (types, input values, code locations) leaked to the client, per C1.
+    log_event(
+        logger,
+        "request validation failed",
+        level=logging.WARNING,
+        method=request.method,
+        path=request.url.path,
+        fields=[".".join(str(p) for p in e["loc"]) for e in exc.errors()],
+    )
+    return JSONResponse(status_code=400, content={"detail": "invalid request body"})
+
+
+# Simple fixed-window rate limit per client IP, in-app (no Ingress controller
+# deployed). Known limitation: state is per-pod, not shared across replicas —
+# with 9 stable + 1 canary pod in production, the effective cluster-wide limit
+# is roughly RATE_LIMIT_MAX_REQUESTS times the number of pods a client happens
+# to hit, not a hard global cap. Documented in THREAT_MODEL.md.
+RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", "20"))
+RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "10"))
+RATE_LIMITED_PATHS = {"/predict", "/recommend"}
+_request_log: dict[str, deque] = defaultdict(deque)
+
+
+def _is_rate_limited(client_ip: str) -> bool:
+    now = time.monotonic()
+    window = _request_log[client_ip]
+    while window and now - window[0] > RATE_LIMIT_WINDOW_SECONDS:
+        window.popleft()
+    if len(window) >= RATE_LIMIT_MAX_REQUESTS:
+        return True
+    window.append(now)
+    return False
+
+
 @app.middleware("http")
 async def metrics_and_logging_middleware(request: Request, call_next):
     start = time.perf_counter()
     path = request.url.path
+
+    if path in RATE_LIMITED_PATHS and _is_rate_limited(request.client.host if request.client else "unknown"):
+        REQUEST_COUNT.labels(method=request.method, path=path, status="429").inc()
+        ERROR_COUNT.labels(method=request.method, path=path).inc()
+        log_event(logger, "rate limit exceeded", level=logging.WARNING, method=request.method, path=path)
+        return JSONResponse(status_code=429, content={"detail": "too many requests"})
+
     try:
         response = await call_next(request)
     except Exception:

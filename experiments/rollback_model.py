@@ -12,6 +12,8 @@ import subprocess
 from dotenv import load_dotenv
 from mlflow.tracking import MlflowClient
 
+from audit_log import audit_event
+
 load_dotenv()
 
 MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "http://localhost:5000")
@@ -38,6 +40,12 @@ def main() -> None:
         version=previous_version,
         stage="Production",
         archive_existing_versions=True,
+    )
+    audit_event(
+        "rollback_production",
+        model_name=REGISTERED_MODEL_NAME,
+        archived_version=bad_version.version,
+        restored_version=previous_version,
     )
     print(f"Rolled back {REGISTERED_MODEL_NAME}: v{bad_version.version} -> Archived, v{previous_version} -> Production")
 
