@@ -14,20 +14,94 @@ MLOps-платформа на AWS EKS: Terraform-інфраструктура, A
   - Перевірено наживо: 259 запитів через ClusterIP Service → 87.6% stable / 12.4% canary (очікувані статистичні відхилення від 90/10 через малу кількість подів і random-балансинг kube-proxy).
   - Promotion (`experiments/promote_model.py`) і rollback (`experiments/rollback_model.py`) — окремі, явні дії, не автоматичні; rollback перевірено практично (RUNBOOK.md, Блок D2).
 
+## Архітектура
+
+```mermaid
+flowchart TB
+    subgraph AWS["AWS (us-east-1)"]
+        subgraph EKS["EKS: goit-mlops-fp"]
+            subgraph mlops_system["namespace: mlops-system"]
+                ArgoCD["ArgoCD"]
+                MLflow["MLflow Server"]
+                MinIO["MinIO (S3-сумісне)"]
+                Postgres["Postgres"]
+                Pushgw["Pushgateway"]
+            end
+            subgraph monitoring_ns["namespace: monitoring"]
+                Prometheus["Prometheus"]
+                Grafana["Grafana"]
+                Loki["Loki"]
+                Promtail["Promtail"]
+            end
+            subgraph staging_ns["namespace: staging"]
+                InfStaging["movielens-inference\n(MODEL_STAGE=Staging)"]
+            end
+            subgraph production_ns["namespace: production"]
+                Svc["Service (без track-селектора)"]
+                Stable["movielens-inference-stable\n9 реплік · Production"]
+                Canary["movielens-inference-canary\n1 репліка · Staging"]
+                Svc --> Stable
+                Svc --> Canary
+            end
+        end
+        ECR["ECR: movielens-inference"]
+    end
+
+    Git["GitHub: goit-MLOps-fp (main)"] -- GitOps sync --> ArgoCD
+    ArgoCD -- deploys --> mlops_system
+    ArgoCD -- deploys --> monitoring_ns
+    ArgoCD -- deploys --> InfStaging
+    ArgoCD -- deploys --> production_ns
+
+    Trainer["experiments/train_and_push.py\n(локально, поза кластером)"] -- логує runs, реєструє модель --> MLflow
+    MLflow -- зберігає артефакти --> MinIO
+    MLflow -- metadata --> Postgres
+    Trainer -- pushes метрики --> Pushgw
+    Trainer -- audit events --> Loki
+
+    Promote["promote_model.py / rollback_model.py"] -- transition stage --> MLflow
+    Promote -- kubectl rollout restart --> Stable
+
+    InfStaging -- load model --> MLflow
+    Stable -- load model --> MLflow
+    Canary -- load model --> MLflow
+    ECR -- pull image --> InfStaging
+    ECR -- pull image --> Stable
+    ECR -- pull image --> Canary
+
+    Prometheus -- scrape /metrics --> InfStaging
+    Prometheus -- scrape /metrics --> Stable
+    Prometheus -- scrape /metrics --> Canary
+    Promtail -- tail stdout --> InfStaging
+    Grafana -- query --> Prometheus
+    Grafana -- query --> Loki
+```
+
 ## Структура репозиторію
 
 ```
 terraform/
-  vpc/        — мережа (VPC, subnets)
-  eks/        — EKS-кластер
-  argocd/     — bootstrap ArgoCD (Helm) + ApplicationSet/Application, що тягнуть gitops/
+  vpc/                     — мережа (VPC, subnets)
+  eks/                     — EKS-кластер
+  argocd/                  — bootstrap ArgoCD (Helm) + ApplicationSet/Application, що тягнуть gitops/
 gitops/
-  namespace/  — по одному Application на namespace (staging, production, mlops-system, monitoring)
-    staging/ns.yaml
-    production/ns.yaml
-    mlops-system/ns.yaml
-    monitoring/ns.yaml
-  argocd/applications/  — ArgoCD Application-маніфести сервісів (MLflow, MinIO, Postgres, Pushgateway, monitoring-stack)
+  namespace/               — по одному Application на namespace (staging, production, mlops-system, monitoring)
+  argocd/applications/     — ArgoCD Application-маніфести сервісів (MLflow, MinIO, Postgres, Pushgateway, monitoring-stack, Loki, inference-staging, inference-production)
+  inference/               — K8s-маніфести inference-сервісу для staging (Deployment, Service, ServiceMonitor, Grafana dashboard ConfigMap)
+  inference-production/    — те саме для production (2 Deployment — stable/canary — за одним Service, ServiceMonitor)
+experiments/
+  train_and_push.py        — тренування SVD-моделі, реєстрація в MLflow, checksum, audit-подія
+  promote_model.py         — Staging → Production (окрема дія)
+  rollback_model.py        — rollback однією командою
+  audit_log.py             — пуш структурованих audit-подій у Loki
+  data/                    — MovieLens ratings.csv / movies.csv
+inference/
+  app/                     — FastAPI inference-сервіс (main.py, model.py, schemas.py, logging_config.py)
+  Dockerfile
+rbac/                      — Role/RoleBinding (mlops-engineer), ClusterRole/ClusterRoleBinding (viewer)
+RUNBOOK.md                 — операційні процедури (promote, rollback, troubleshooting, teardown)
+THREAT_MODEL.md            — 5 загроз і контролі, що їх знижують
+ADR.md                     — обґрунтування deployment-стратегії, trade-off-и
 ```
 
 Кожен файл під `terraform/*/backend.tf` вказує на окремий шлях у спільному S3-бакеті стану (`fp/vpc/...`, `fp/eks/...`, `fp/argocd/...`) — ізольовано від state попередніх ДЗ у тому ж бакеті.
@@ -47,10 +121,19 @@ Bootstrap виконується у явних фазах — послідовн
 
 ### Передумови
 
-- Terraform CLI ≥ 1.5
+Версії, на яких фактично перевірено розгортання цього репозиторію:
+
+| Інструмент | Версія |
+|---|---|
+| Terraform CLI | 1.9.8 (вимога проєкту: ≥ 1.5) |
+| AWS CLI | 2.36.23 |
+| kubectl | 1.36.1 |
+| Docker | 29.6.2 (для збірки `inference/Dockerfile`) |
+| Python | 3.13 (для `experiments/*.py`) |
+
 - AWS CLI, налаштований профіль `goit-terraform` з доступом до акаунту
-- `kubectl`, `helm`
 - Існуючий S3-бакет `mlops-tfstate-goit-512523811086` і DynamoDB-таблиця `mlops-tfstate-lock` (спільні для всіх ДЗ цього акаунту — вже створені раніше)
+- ECR-репозиторій `movielens-inference` (створюється один раз: `aws ecr create-repository --repository-name movielens-inference --region us-east-1 --profile goit-terraform`)
 
 ### Фаза 1 — мережа і кластер (Terraform)
 
@@ -120,7 +203,8 @@ cd ../vpc && terraform destroy
 
 Порядок зворотний до розгортання (спочатку те, що залежить, потім базове).
 
-## Відомі обмеження (буде виправлено найближчим часом)
+## Відомі обмеження
 
-- MinIO/Postgres/MLflow мають хардкоджені креденшели прямо в `gitops/argocd/applications/*.yaml` — винесення в Kubernetes Secret заплановано в Блоці C (security baseline).
+- **MinIO/Postgres/MLflow мають хардкоджені креденшели прямо в `gitops/argocd/applications/*.yaml`.** Блок C (security baseline) свідомо сфокусувався на inference-endpoint (input validation, rate limiting, RBAC, checksum, audit logging) — секрети зостались поза межами тижневого спринту. Правильне рішення — Kubernetes Secret + External Secrets Operator (або Sealed Secrets), задокументовано як компроміс у `ADR.md`.
+- **Rate limiting — per-под, не кластерний.** Лічильник живе в пам'яті кожного поду окремо (немає Redis чи shared store), тому ефективна межа масштабується з кількістю реплік. Задокументовано в `THREAT_MODEL.md`.
 - `mlops-system` namespace створюється двічі за задумом: спочатку напряму Terraform-ом (`kubernetes_namespace.argocd` — потрібен до встановлення самого ArgoCD, класична проблема "курки і яйця"), потім ще раз декларативно через `gitops/namespace/mlops-system/ns.yaml` під управлінням ArgoCD (ідемпотентно, конфлікту не викликає, ArgoCD просто бере existing namespace під GitOps-управління).
