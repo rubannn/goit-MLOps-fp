@@ -6,6 +6,14 @@ MLOps-платформа на AWS EKS: Terraform-інфраструктура, A
 
 **Документація:** [RUNBOOK.md](RUNBOOK.md) (операційні процедури) · [THREAT_MODEL.md](THREAT_MODEL.md) (загрози й контролі) · [ADR.md](ADR.md) (обґрунтування deployment-стратегії)
 
+## Структура: один репозиторій
+
+Весь проєкт — Terraform, GitOps-маніфести, training/inference-код, RBAC, документація — свідомо в **одному** репозиторії (`goit-MLOps-fp`), а не розбитий на кілька (напр. окремо infra / okремо app-код):
+
+- Усі частини мають спільний життєвий цикл і версіонуються разом — зміна моделі, деплойменту й інфраструктури часто йдуть в одному коміті (напр. новий образ inference-сервісу + оновлений Deployment-маніфест).
+- ArgoCD і так тягне GitOps-маніфести з цього самого репозиторію (`gitops_repo_url` у `terraform/argocd/variables.tf`) — розділення на кілька репо ускладнило б bootstrap без реальної користі для проєкту такого розміру.
+- `goit-MLOps` і `goit-MLOps-argo` (попередні ДЗ) — джерело коду, звідки перенесено й адаптовано частини цього репозиторію (Terraform-модулі, приклади ArgoCD Application-маніфестів); самі ці репозиторії не є частиною здачі фінального проєкту.
+
 ## Модель і дані
 
 - **Датасет:** [MovieLens ml-latest-small](https://grouplens.org/datasets/movielens/) (GroupLens Research) — публічний, ~100 000 рейтингів, ~9 000 фільмів.
@@ -173,7 +181,7 @@ terraform apply
 ```bash
 kubectl get pods -n mlops-system
 kubectl port-forward svc/argocd-server -n mlops-system 8080:443
-# відкрити https://localhost:8080, логін admin / (пароль з kubectl -n mlops-system get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+# ArgoCD запущено з --insecure (argocd-values.yaml) — відкрити http://localhost:8080 (НЕ https), логін admin / (пароль з kubectl -n mlops-system get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 ```
 
 ### Фаза 2.5 — секрети (одноразово, вручну, поза Git)
@@ -207,12 +215,27 @@ kubectl get applications -n mlops-system
 
 ### Доступ до сервісів
 
-MLflow і Grafana доступні через port-forward (обґрунтування: без публічного Ingress/DNS для навчального проєкту — простіше й безпечніше для тимчасово піднятої на ~24 год інфраструктури):
+Усі сервіси доступні лише через port-forward (обґрунтування: без публічного Ingress/DNS для навчального проєкту — простіше й безпечніше для тимчасово піднятої на ~24 год інфраструктури). Кожна команда — в окремому терміналі, тримати відкритою, поки потрібен доступ:
 
 ```bash
-kubectl port-forward svc/mlflow -n mlops-system 5000:5000
-kubectl port-forward svc/monitoring-stack-grafana -n monitoring 3000:80
+kubectl port-forward svc/argocd-server -n mlops-system 8080:443       # http://localhost:8080 (insecure-режим — не https)
+kubectl port-forward svc/mlflow -n mlops-system 5000:5000             # http://localhost:5000
+kubectl port-forward svc/monitoring-stack-grafana -n monitoring 3000:80  # http://localhost:3000, admin / (kubectl get secret monitoring-stack-grafana -n monitoring -o jsonpath="{.data.admin-password}" | base64 -d)
+kubectl port-forward svc/movielens-inference -n staging 8000:80       # http://localhost:8000 — canary-кандидат (Staging)
+kubectl port-forward svc/movielens-inference -n production 8090:80    # http://localhost:8090 — 90/10 stable/canary
 ```
+
+## Demo-trace
+
+| | |
+|---|---|
+| **ArgoCD — усі Applications Synced/Healthy** (стор. 1) | ![ArgoCD applications, page 1](img/01_argo.png) |
+| **ArgoCD — усі Applications Synced/Healthy** (стор. 2) | ![ArgoCD applications, page 2](img/02_argo.png) |
+| **MLflow — головна сторінка, experiment `movielens-svd`** | ![MLflow home](img/03_mlflow.png) |
+| **MLflow Model Registry — `movielens-recommender`, stage=Production** | ![MLflow model registry, Production stage](img/03_mlflow_model.png) |
+| **Grafana-дашборд "MovieLens Inference Service" (інкогніто)** | ![Grafana dashboard, incognito](img/04_grafana.png) |
+| **Production inference — `/health`** | ![Production health check](img/06_Inference_prod.png) |
+| **Production inference — `/metrics` (Prometheus scrape target)** | ![Production metrics](img/06.png) |
 
 ## Прибирання ресурсів (після кожної робочої сесії)
 
