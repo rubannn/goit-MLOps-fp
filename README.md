@@ -4,15 +4,17 @@ MLOps-платформа на AWS EKS: Terraform-інфраструктура, A
 
 > Опорні напрацювання з попередніх ДЗ: `goit-MLOps` (Terraform/EKS), `goit-MLOps-argo` (ArgoCD/namespace-маніфести). Код перенесено й адаптовано під структуру цього репозиторію — вихідні репозиторії не змінювались.
 
+**Документація:** [RUNBOOK.md](RUNBOOK.md) (операційні процедури) · [THREAT_MODEL.md](THREAT_MODEL.md) (загрози й контролі) · [ADR.md](ADR.md) (обґрунтування deployment-стратегії)
+
 ## Модель і дані
 
 - **Датасет:** [MovieLens ml-latest-small](https://grouplens.org/datasets/movielens/) (GroupLens Research) — публічний, ~100 000 рейтингів, ~9 000 фільмів.
 - **Задача:** рекомендаційна система (Matrix Factorization).
-- **Deployment-стратегія:** Canary (90/10) — детальне обґрунтування в `ADR.md` (Блок D), коротко:
+- **Deployment-стратегія:** Canary (90/10) — детальне обґрунтування в [ADR.md](ADR.md) (Блок D), коротко:
   - Домен low-stakes (рекомендація фільму, не медичне/фінансове рішення) — безпечно пускати частину живого трафіку на неперевірену модель.
   - Реалізація: `production` namespace містить 2 Deployment за одним Service без `track` у селекторі — `movielens-inference-stable` (9 реплік, модель зі стадії **Production**) і `movielens-inference-canary` (1 репліка, модель зі стадії **Staging** — наступний кандидат). Оскільки Service балансує по всіх подах, що збігаються з лейблом `app: movielens-inference`, розподіл трафіку визначається співвідношенням кількості реплік (9:1 ≈ 90/10), без Ingress-контролера чи service mesh.
   - Перевірено наживо: 259 запитів через ClusterIP Service → 87.6% stable / 12.4% canary (очікувані статистичні відхилення від 90/10 через малу кількість подів і random-балансинг kube-proxy).
-  - Promotion (`experiments/promote_model.py`) і rollback (`experiments/rollback_model.py`) — окремі, явні дії, не автоматичні; rollback перевірено практично (RUNBOOK.md, Блок D2).
+  - Promotion (`experiments/promote_model.py`) і rollback (`experiments/rollback_model.py`) — окремі, явні дії, не автоматичні; rollback перевірено практично ([RUNBOOK.md](RUNBOOK.md), Блок D2).
 
 ## Архітектура
 
@@ -176,7 +178,7 @@ kubectl port-forward svc/argocd-server -n mlops-system 8080:443
 
 ### Фаза 2.5 — секрети (одноразово, вручну, поза Git)
 
-MinIO/Postgres/MLflow читають креденшели з Kubernetes Secret, а не з git (див. `THREAT_MODEL.md`). Створіть їх **до** Фази 3, з власними паролями (не використовуйте наведені нижче як приклад):
+MinIO/Postgres/MLflow читають креденшели з Kubernetes Secret, а не з git (див. [THREAT_MODEL.md](THREAT_MODEL.md)). Створіть їх **до** Фази 3, з власними паролями (не використовуйте наведені нижче як приклад):
 
 ```bash
 for ns in mlops-system staging production; do
@@ -224,5 +226,5 @@ cd ../vpc && terraform destroy
 
 ## Відомі обмеження
 
-- **Rate limiting — per-под, не кластерний.** Лічильник живе в пам'яті кожного поду окремо (немає Redis чи shared store), тому ефективна межа масштабується з кількістю реплік. Задокументовано в `THREAT_MODEL.md`.
+- **Rate limiting — per-под, не кластерний.** Лічильник живе в пам'яті кожного поду окремо (немає Redis чи shared store), тому ефективна межа масштабується з кількістю реплік. Задокументовано в [THREAT_MODEL.md](THREAT_MODEL.md).
 - `mlops-system` namespace створюється двічі за задумом: спочатку напряму Terraform-ом (`kubernetes_namespace.argocd` — потрібен до встановлення самого ArgoCD, класична проблема "курки і яйця"), потім ще раз декларативно через `gitops/namespace/mlops-system/ns.yaml` під управлінням ArgoCD (ідемпотентно, конфлікту не викликає, ArgoCD просто бере existing namespace під GitOps-управління).

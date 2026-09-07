@@ -61,6 +61,31 @@ kubectl get pods -n production
 4. Якщо проблема — повільне звернення до MLflow/MinIO (перше завантаження моделі на under, ~ 5-10с), а не сталий стан — це очікувано при **холодному старті** поду (модель кешується через `lru_cache` після першого запиту). Якщо це трапляється на кожному новому поді при масштабуванні — розглянути `initContainer`, що прогріває модель до відкриття readiness.
 5. Якщо латентність стабільно висока і не деградує — перевірити мережеву затримку до `mlflow.mlops-system.svc.cluster.local`/`minio.mlops-system.svc.cluster.local` (`kubectl exec` в под і `curl -w "%{time_total}"`).
 
+## Якщо ротували MinIO/Postgres креденшели (Secret) — очікуйте втрату даних
+
+`persistence: enabled: false` для MinIO і Postgres (свідомий компроміс для тимчасово піднятої на ~24 год інфраструктури) означає: **будь-який перезапуск цих подів стирає весь стан** — Model Registry (Postgres) і всі артефакти моделей (MinIO). Оновлення `minio-credentials`/`postgres-credentials` Secret і наступний `kubectl rollout restart` — саме такий перезапуск.
+
+Після ротації креденшелів:
+1. Перевірте, чи MLflow API взагалі відповідає (не завис на старому connection pool до Postgres):
+   ```bash
+   kubectl rollout restart deployment/mlflow -n mlops-system
+   ```
+2. **Відомий баг community-charts/mlflow:** при переході на `existingSecret` чарт не оновлює свій внутрішній `mlflow-env-secret` (Deployment продовжує посилатись на нього через `envFrom`, і без нього под падає з `CreateContainerConfigError`). Якщо після ротації под MLflow не піднімається — перестворіть цей секрет вручну зі свіжими значеннями:
+   ```bash
+   kubectl create secret generic mlflow-env-secret -n mlops-system \
+     --from-literal=AWS_ACCESS_KEY_ID=<з minio-credentials> \
+     --from-literal=AWS_SECRET_ACCESS_KEY=<з minio-credentials> \
+     --from-literal=PGUSER=mlflow \
+     --from-literal=PGPASSWORD=<з postgres-credentials> \
+     --dry-run=client -o yaml | kubectl apply -f -
+   kubectl rollout restart deployment/mlflow -n mlops-system
+   ```
+3. Перевірте, чи Model Registry порожній:
+   ```bash
+   python -c "from mlflow.tracking import MlflowClient; c=MlflowClient(tracking_uri='http://localhost:5000'); print(len(list(c.search_model_versions(\"name='movielens-recommender'\"))))"
+   ```
+4. Якщо `0` — відновіть повний цикл: `train_and_push.py` → `promote_model.py --version <N>` → `kubectl rollout restart` для staging і production inference-деплойментів.
+
 ## Що робити, якщо Evidently показує data drift
 
 > ⚠️ Evidently AI ще не інтегрований (Блок E, рекомендований, не обов'язковий) — цей розділ буде доповнено, коли з'явиться CronJob.
