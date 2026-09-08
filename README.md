@@ -242,7 +242,12 @@ cd ../eks && terraform destroy
 cd ../vpc && terraform destroy
 ```
 
-Порядок зворотний до розгортання (спочатку те, що залежить, потім базове).
+## Контроль
+```bash
+aws eks list-clusters --region us-east-1 --profile goit-terraform
+aws ec2 describe-vpcs --region us-east-1 --profile goit-terraform --filters "Name=tag:Name,Values=*goit-mlops-fp*"
+```
+
 
 ## Відомі обмеження
 
